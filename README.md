@@ -4,6 +4,12 @@ Test scripts for virtio_net XDP meta data support.
 
 ## Setup
 
+* Install virtme
+
+See https://github.com/amluto/virtme
+
+* Download and build patched kernel.
+
 ```
 ./download_kernel.sh
 ./build_kernel.sh
