@@ -31,5 +31,6 @@ See https://github.com/amluto/virtme
 
 ## TODO
 
-* [ ] test for XDP_TX
-* [ ] test for XDP_REDIRECT
+* [x] tests for XDP_PASS
+* [ ] tests for XDP_TX
+* [ ] tests for XDP_REDIRECT
