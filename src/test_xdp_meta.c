@@ -37,13 +37,6 @@ static inline void swap_src_dst_ip(struct iphdr *iph)
 	iph->saddr = addr;
 }
 
-__attribute__((__always_inline__))
-static inline __u16 csum_fold_helper(__wsum sum)
-{
-	sum = (sum & 0xffff) + (sum >> 16);
-	return ~((sum & 0xffff) + (sum >> 16));
-}
-
 SEC("t")
 int ing_cls(struct __sk_buff *ctx)
 {
