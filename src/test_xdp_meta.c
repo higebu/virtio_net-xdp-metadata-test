@@ -44,17 +44,6 @@ static inline __u16 csum_fold_helper(__wsum sum)
 	return ~((sum & 0xffff) + (sum >> 16));
 }
 
-__attribute__((__always_inline__))
-static inline __u16 ipv4_csum(void *data_start, int data_size)
-{
-	__wsum sum;
-
-	sum = bpf_csum_diff(0, 0, data_start, data_size, 0);
-	return csum_fold_helper(sum);
-}
-
-#define ICMP_ECHO_LEN		64
-
 SEC("t")
 int ing_cls(struct __sk_buff *ctx)
 {
@@ -100,28 +89,26 @@ int ing_xdp_pass(struct xdp_md *ctx)
 SEC("tx")
 int ing_xdp_tx(struct xdp_md *ctx)
 {
-	void *data_end = (void *)(long)ctx->data_end;
-	void *data = (void *)(long)ctx->data;
 	void *data_meta = (void *)(long)ctx->data_meta;
-	struct ethhdr *eth = data;
-	struct iphdr *iph;
-	struct icmphdr *icmph;
 	int ret;
-
-	ret = bpf_xdp_adjust_meta(ctx, 4);
+	ret = bpf_xdp_adjust_meta(ctx, -round_up(ETH_ALEN, 4));
 	if (ret < 0)
 		return XDP_DROP;
 
-	if (data + sizeof(*eth) + sizeof(*iph) + ICMP_ECHO_LEN > data_end)
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data = (void *)(long)ctx->data;
+
+	struct ethhdr *eth = data;
+	struct iphdr *iph;
+	struct icmphdr *icmph;
+
+	if (data + sizeof(*eth) + sizeof(*iph) + sizeof(*icmph)> data_end)
 		return XDP_PASS;
 
-    if (eth->h_proto != bpf_htons(ETH_P_IP))
+	if (eth->h_proto != bpf_htons(ETH_P_IP))
 		return XDP_PASS;
 
 	iph = data + sizeof(*eth);
-	if (bpf_ntohs(iph->tot_len) - sizeof(*iph) != ICMP_ECHO_LEN)
-		return XDP_PASS;
-
 	icmph = data + sizeof(*eth) + sizeof(*iph);
 	if (icmph->type != ICMP_ECHO)
 		return XDP_PASS;
@@ -129,8 +116,7 @@ int ing_xdp_tx(struct xdp_md *ctx)
 	swap_src_dst_mac(data);
 	swap_src_dst_ip(iph);
 	icmph->type = ICMP_ECHOREPLY;
-	icmph->checksum = 0;
-	icmph->checksum = ipv4_csum(icmph, ICMP_ECHO_LEN);
+	icmph->checksum += 0x0008;
 
 	return XDP_TX;
 }

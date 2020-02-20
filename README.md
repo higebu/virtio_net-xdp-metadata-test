@@ -31,8 +31,34 @@ See https://github.com/amluto/virtme
 ./run-test.sh --receive_mergeable
 ```
 
+### XDP_TX
+
+* start a vm
+
+```
+./run-vm.sh
+```
+
+* setup guest in the vm
+
+```
+./setup_guest.sh
+```
+
+* setup host
+
+```
+./setup_host.sh
+```
+
+* check the result of ping to guest from host
+
+```
+ping 10.0.1.2
+```
+
 ## TODO
 
 * [x] tests for XDP_PASS
-* [ ] tests for XDP_TX
+* [x] tests for XDP_TX
 * [ ] tests for XDP_REDIRECT
