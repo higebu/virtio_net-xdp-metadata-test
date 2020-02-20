@@ -2,6 +2,7 @@
 #include <linux/if_ether.h>
 #include <linux/pkt_cls.h>
 #include <linux/ip.h>
+#include <linux/icmp.h>
 
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
@@ -35,6 +36,24 @@ static inline void swap_src_dst_ip(struct iphdr *iph)
 	iph->daddr = iph->saddr;
 	iph->saddr = addr;
 }
+
+__attribute__((__always_inline__))
+static inline __u16 csum_fold_helper(__wsum sum)
+{
+	sum = (sum & 0xffff) + (sum >> 16);
+	return ~((sum & 0xffff) + (sum >> 16));
+}
+
+__attribute__((__always_inline__))
+static inline __u16 ipv4_csum(void *data_start, int data_size)
+{
+	__wsum sum;
+
+	sum = bpf_csum_diff(0, 0, data_start, data_size, 0);
+	return csum_fold_helper(sum);
+}
+
+#define ICMP_ECHO_LEN		64
 
 SEC("t")
 int ing_cls(struct __sk_buff *ctx)
@@ -81,36 +100,37 @@ int ing_xdp_pass(struct xdp_md *ctx)
 SEC("tx")
 int ing_xdp_tx(struct xdp_md *ctx)
 {
-	__u8 *data, *data_meta, *data_end;
+	void *data_end = (void *)(long)ctx->data_end;
+	void *data = (void *)(long)ctx->data;
+	void *data_meta = (void *)(long)ctx->data_meta;
+	struct ethhdr *eth = data;
+	struct iphdr *iph;
+	struct icmphdr *icmph;
 	int ret;
 
-	ret = bpf_xdp_adjust_meta(ctx, -round_up(ETH_ALEN, 4));
+	ret = bpf_xdp_adjust_meta(ctx, 4);
 	if (ret < 0)
 		return XDP_DROP;
 
-	data_meta = ctx_ptr(ctx, data_meta);
-	data_end  = ctx_ptr(ctx, data_end);
-	data      = ctx_ptr(ctx, data);
-
-	if (data + ETH_ALEN > data_end ||
-	    data_meta + round_up(ETH_ALEN, 4) > data)
-		return XDP_DROP;
-
-	__builtin_memcpy(data_meta, data, ETH_ALEN);
-
-	struct ethhdr *eth = (void *)data;
-	if (eth + 1 > data_end)
-	    return XDP_DROP;
+	if (data + sizeof(*eth) + sizeof(*iph) + ICMP_ECHO_LEN > data_end)
+		return XDP_PASS;
 
     if (eth->h_proto != bpf_htons(ETH_P_IP))
 		return XDP_PASS;
 
-	struct iphdr *iph = (void *)data + sizeof(struct ethhdr);
-	if (iph + 1 > data_end)
-	    return XDP_DROP;
+	iph = data + sizeof(*eth);
+	if (bpf_ntohs(iph->tot_len) - sizeof(*iph) != ICMP_ECHO_LEN)
+		return XDP_PASS;
+
+	icmph = data + sizeof(*eth) + sizeof(*iph);
+	if (icmph->type != ICMP_ECHO)
+		return XDP_PASS;
 
 	swap_src_dst_mac(data);
 	swap_src_dst_ip(iph);
+	icmph->type = ICMP_ECHOREPLY;
+	icmph->checksum = 0;
+	icmph->checksum = ipv4_csum(icmph, ICMP_ECHO_LEN);
 
 	return XDP_TX;
 }
