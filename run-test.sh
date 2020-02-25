@@ -5,17 +5,28 @@ set -o pipefail
 
 readonly script_dir=$(realpath "$(dirname $0)")
 src_dir=$script_dir/bpf-next
-pushd "${src_dir}"
-readonly kernel_version=$(make kernelversion)
-popd
-
-readonly kernel_image=./linux-${kernel_version}.bz
 readonly script=$(realpath $script_dir/test.sh)
 
 mrg_rxbuf="off"
 if [[ "${1:-}" = "--receive_mergeable" ]]; then
 	shift
 	mrg_rxbuf="on"
+fi
+
+kernel_image=""
+if [[ "${1:-}" != "" ]]; then
+	kernel_image=$1
+	shift
+fi
+if [[ "$kernel_image" = "" ]]; then
+	pushd "${src_dir}"
+	kernel_version=$(make kernelversion)
+	popd
+	kernel_image=./linux-${kernel_version}.bz
+fi
+if [[ "$kernel_image" = "" ]]; then
+	echo "please specify kernel image or download and build kernel image"
+	exit 1
 fi
 
 run_test()
